@@ -1,0 +1,66 @@
+micro-arena.h
+=============
+
+Header only memory allocator in C99 (first fit). It implements
+the common memory function from stdlib.h:
+
+      void *micro_arena_malloc(MicroArena *ma, size_t size);
+      void micro_arena_free(MicroArena *ma, void * ptr);
+      void *micro_arena_calloc(MicroArena *ma, size_t nmemb, size_t size);
+      void *micro_arena_realloc(MicroArena *ma, void * ptr, size_t size);
+      void *micro_arena_reallocarray(MicroArena *ma, void * ptr, size_t nmemb, size_t size);
+
+
+Author:  Giovanni Santini
+Mail:    giovanni.santini@proton.me
+Github:  @San7o
+
+
+Example
+-------
+
+
+    MicroArena ma;
+    micro_arena_init(&ma);
+
+    int array_len = 10;
+    int* mem = micro_arena_malloc(&ma, sizeof(int) * array_len);
+    assert(mem != NULL);  
+
+    micro_arena_free(&ma, mem);
+
+
+Usage
+-----
+
+Do this:
+
+  #define MICRO_ARENA_IMPLEMENTATION
+
+before you include this file in *one* C or C++ file to create the
+implementation.
+
+i.e. it should look like this:
+
+  #include ...
+  #include ...
+  #include ...
+  #define MICRO_ARENA_IMPLEMENTATION
+  #include "micro-arena.h"
+
+You can tune the library by #defining certain values. See the
+"Config" comments under "Configuration" below.
+
+
+Code
+----
+
+The official git repository of micro-arena.h is hosted at:
+
+    https://github.com/San7o/micro-arena.h
+
+This is part of a bigger collection of header-only C99 libraries
+called "micro-headers", contributions are welcome:
+
+    https://github.com/San7o/micro-headers
+
