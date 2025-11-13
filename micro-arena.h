@@ -241,7 +241,7 @@ MICRO_ARENA_DEF void micro_arena_free(MicroArena *ma, void *ptr)
 
   #ifdef MICRO_ARENA_DEBUG
   printf("DEBUG: micro_arena_free: used chunk start = %p, size = %ld\n",
-         used_chunk->start,
+         (void*)used_chunk->start,
          used_chunk->size);
   #endif
 
@@ -441,7 +441,7 @@ micro_arena_debug_print_chunk_list(MicroArenaChunkList* chunk_list)
   printf("Chunk list len: %ld\n", chunk_list->len);
   for (size_t i = 0; i < chunk_list->len; ++i)
     printf("- start = %p, size = %ld\n",
-           chunk_list->chunks[i].start,
+           (void*)chunk_list->chunks[i].start,
            chunk_list->chunks[i].size);
 }
 
