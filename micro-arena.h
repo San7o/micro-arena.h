@@ -107,6 +107,9 @@ extern "C" {
 // Config: Include debug functions
 // #define MICRO_ARENA_DEBUG
 
+// Config: Enable thread safety
+// #define MICRO_ARENA_MULTITHREADED
+
 //
 // Types
 //
@@ -114,6 +117,10 @@ extern "C" {
 #include <stddef.h>
 #include <stdbool.h>
 
+#ifdef MICRO_ARENA_MULTITHREADED
+  #include <pthread.h>
+#endif
+  
 typedef struct {
   char* start;
   size_t size;
@@ -122,12 +129,18 @@ typedef struct {
 typedef struct {
   MicroArenaChunk chunks[MICRO_ARENA_MAX_NUM_CHUNKS];
   size_t len;
+  #ifdef MICRO_ARENA_MULTITHREADED
+  pthread_mutex_t list_mutex;
+  #endif
 } MicroArenaChunkList;
 
 typedef struct {
   char mem[MICRO_ARENA_STACK_MEM_SIZE];
   MicroArenaChunkList free_chunks;
   MicroArenaChunkList used_chunks;
+  #ifdef MICRO_ARENA_MULTITHREADED
+  pthread_mutex_t arena_mutex;
+  #endif
 } MicroArena;
 
 //
@@ -193,17 +206,24 @@ MICRO_ARENA_DEF void micro_arena_init(MicroArena *ma)
   micro_arena_chunk_list_reset(&ma->used_chunks);
   micro_arena_chunk_list_add(&ma->free_chunks, &ma->mem,
                              MICRO_ARENA_STACK_MEM_SIZE);
+  #ifdef MICRO_ARENA_MULTITHREADED
+  pthread_mutex_init(&ma->arena_mutex, NULL);
+  #endif
   return;
 }
 
 MICRO_ARENA_DEF void *micro_arena_malloc(MicroArena *ma, size_t size)
 {
+  #ifdef MICRO_ARENA_MULTITHREADED
+  pthread_mutex_lock(&ma->arena_mutex);
+  #endif
+  
   #ifdef MICRO_ARENA_DEBUG
   printf("DEBUG: micro_arena_malloc: called with size %ld\n", size);
   #endif
 
   if (!ma)
-    return NULL;
+    goto exit;
 
   for (size_t i = 0; i < ma->free_chunks.len; ++i)
   {
@@ -215,29 +235,41 @@ MICRO_ARENA_DEF void *micro_arena_malloc(MicroArena *ma, size_t size)
                                  ma->free_chunks.chunks[i].start,
                                  size);
     if (!used_chunk)
-      return NULL;
+      goto exit;
+    
     ma->free_chunks.chunks[i].start = ma->free_chunks.chunks[i].start + size;
     ma->free_chunks.chunks[i].size = ma->free_chunks.chunks[i].size - size;
-    
+
+    #ifdef MICRO_ARENA_MULTITHREADED
+    pthread_mutex_unlock(&ma->arena_mutex);
+    #endif
     return (void*)used_chunk->start;
   }
-  
+
+ exit:
+  #ifdef MICRO_ARENA_MULTITHREADED
+  pthread_mutex_unlock(&ma->arena_mutex);
+  #endif
   return NULL;
 }
 
 MICRO_ARENA_DEF void micro_arena_free(MicroArena *ma, void *ptr)
 {
+  #ifdef MICRO_ARENA_MULTITHREADED
+  pthread_mutex_unlock(&ma->arena_mutex);
+  #endif
+  
   #ifdef MICRO_ARENA_DEBUG
   printf("DEBUG: micro_arena_free: called with ptr %p\n", ptr);
   #endif
 
   if (!ma)
-    return;
+    goto exit;
   
   MicroArenaChunk *used_chunk =
     micro_arena_chunk_list_get(&ma->used_chunks, ptr);
   if (!used_chunk)
-    return;
+    goto exit;
 
   #ifdef MICRO_ARENA_DEBUG
   printf("DEBUG: micro_arena_free: used chunk start = %p, size = %ld\n",
@@ -265,7 +297,7 @@ MICRO_ARENA_DEF void micro_arena_free(MicroArena *ma, void *ptr)
     free_chunk_before->size += used_chunk->size + free_chunk_after->size;
     micro_arena_chunk_list_remove(&ma->used_chunks, used_chunk->start);
     micro_arena_chunk_list_remove(&ma->free_chunks, free_chunk_before->start);
-    return;
+    goto exit;
   }
   if (free_chunk_before)
   {
@@ -274,7 +306,7 @@ MICRO_ARENA_DEF void micro_arena_free(MicroArena *ma, void *ptr)
     #endif
     free_chunk_before->size += used_chunk->size;
     micro_arena_chunk_list_remove(&ma->used_chunks, used_chunk->start);
-    return;
+    goto exit;
   }
   if (free_chunk_after)
   {
@@ -284,7 +316,7 @@ MICRO_ARENA_DEF void micro_arena_free(MicroArena *ma, void *ptr)
     free_chunk_after->start = used_chunk->start;
     free_chunk_after->size += used_chunk->size;
     micro_arena_chunk_list_remove(&ma->used_chunks, used_chunk->start);
-    return;
+    goto exit;
   }
 
   #ifdef MICRO_ARENA_DEBUG
@@ -295,6 +327,11 @@ MICRO_ARENA_DEF void micro_arena_free(MicroArena *ma, void *ptr)
                              used_chunk->start,
                              used_chunk->size);
   micro_arena_chunk_list_remove(&ma->used_chunks, used_chunk->start);
+
+ exit:
+  #ifdef MICRO_ARENA_MULTITHREADED
+  pthread_mutex_unlock(&ma->arena_mutex);
+  #endif
   return;
 }
 
@@ -348,14 +385,27 @@ MICRO_ARENA_DEF MicroArenaChunk*
 micro_arena_chunk_list_add(MicroArenaChunkList *chunk_list,
                            void* start, size_t size)
 {
+  #ifdef MICRO_ARENA_MULTITHREADED
+  pthread_mutex_lock(&chunk_list->list_mutex);
+  #endif
+  
   if (!chunk_list || chunk_list->len + 1 >= MICRO_ARENA_MAX_NUM_CHUNKS)
+  {
+    #ifdef MICRO_ARENA_MULTITHREADED
+    pthread_mutex_unlock(&chunk_list->list_mutex);
+    #endif
     return NULL;
+  }
 
   chunk_list->chunks[chunk_list->len] = (MicroArenaChunk){
     .start = start,
     .size = size,
   };
   chunk_list->len++;
+
+  #ifdef MICRO_ARENA_MULTITHREADED
+  pthread_mutex_unlock(&chunk_list->list_mutex);
+  #endif
   return &chunk_list->chunks[chunk_list->len - 1];
 }
 
@@ -363,8 +413,12 @@ MICRO_ARENA_DEF void
 micro_arena_chunk_list_remove(MicroArenaChunkList *chunk_list,
                               void* start)
 {
+  #ifdef MICRO_ARENA_MULTITHREADED
+  pthread_mutex_lock(&chunk_list->list_mutex);
+  #endif
+  
   if (!chunk_list)
-    return;
+    goto exit;
   
   size_t i = 0;
   while (i < chunk_list->len)
@@ -374,13 +428,18 @@ micro_arena_chunk_list_remove(MicroArenaChunkList *chunk_list,
     ++i;
   }
   if (i >= chunk_list->len)
-    return;
+    goto exit;
   
   for (i = i+1; i < chunk_list->len; ++i)
   {
     chunk_list->chunks[i-1] = chunk_list->chunks[i];
   }
   chunk_list->len--;
+
+ exit:
+  #ifdef MICRO_ARENA_MULTITHREADED
+  pthread_mutex_unlock(&chunk_list->list_mutex);
+  #endif
   return;
 }
 
@@ -388,13 +447,21 @@ MICRO_ARENA_DEF MicroArenaChunk*
 micro_arena_chunk_list_get(MicroArenaChunkList *chunk_list,
                            void* start)
 {
+  #ifdef MICRO_ARENA_MULTITHREADED
+  pthread_mutex_lock(&chunk_list->list_mutex);
+  #endif
+  
   if (!chunk_list)
-    return NULL;
+    goto exit;
   
   for (size_t i = 0; i < chunk_list->len; ++i)
     if (chunk_list->chunks[i].start == start)
       return &chunk_list->chunks[i];
 
+ exit:
+  #ifdef MICRO_ARENA_MULTITHREADED
+  pthread_mutex_unlock(&chunk_list->list_mutex);
+  #endif
   return NULL;
 }
 
@@ -402,9 +469,18 @@ micro_arena_chunk_list_get(MicroArenaChunkList *chunk_list,
 MICRO_ARENA_DEF void
 micro_arena_chunk_list_reset(MicroArenaChunkList *chunk_list)
 {
+  #ifdef MICRO_ARENA_MULTITHREADED
+  pthread_mutex_lock(&chunk_list->list_mutex);
+  #endif
+
   if (!chunk_list)
-    return;
+    goto exit;
   chunk_list->len = 0;
+
+ exit:
+  #ifdef MICRO_ARENA_MULTITHREADED
+  pthread_mutex_unlock(&chunk_list->list_mutex);
+  #endif
   return;
 }
 

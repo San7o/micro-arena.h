@@ -3,6 +3,7 @@
 // Mail:    giovanni.santini@proton.me
 // Github:  @San7o
 
+#define MICRO_ARENA_MULTITHREADED
 #define MICRO_ARENA_DEBUG
 #define MICRO_ARENA_IMPLEMENTATION
 #include "micro-arena.h"
