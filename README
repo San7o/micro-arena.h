@@ -2,7 +2,7 @@ micro-arena.h
 =============
 
 Header only memory allocator in C99 (first fit). It implements
-the common memory function from stdlib.h:
+the common memory functions from stdlib.h:
 
       void *micro_arena_malloc(MicroArena *ma, size_t size);
       void micro_arena_free(MicroArena *ma, void * ptr);
