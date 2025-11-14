@@ -67,6 +67,12 @@
 //
 //     https://github.com/San7o/micro-headers
 //
+// If you want to see how more advanced memory allocaters work, check
+// out these projects:
+//
+//     https://google.github.io/tcmalloc/overview.html
+//     https://nothings.org/stb/stb_malloc.h
+//
 
 #ifndef MICRO_ARENA
 #define MICRO_ARENA
