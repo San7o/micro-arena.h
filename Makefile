@@ -8,7 +8,7 @@
 #
 CFLAGS      = -Wall -Werror -Wextra -Wpedantic -std=c99
 DEBUG_FLAGS = -ggdb
-LDFLAGS     =
+LDFLAGS     = -lpthread
 CC?         = gcc
 
 #
@@ -31,6 +31,7 @@ run: $(OUT_NAME)
 	chmod +x $(OUT_NAME)
 	./$(OUT_NAME)
 
+check: CFLAGS += $(DEBUG_FLAGS)
 check: $(TEST_NAME)
 	chmod +x $(TEST_NAME)
 	./$(TEST_NAME)
